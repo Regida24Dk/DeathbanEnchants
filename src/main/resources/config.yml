@@ -2,6 +2,7 @@
 settings:
   prefix: '&8[&dDeathbanEnchants&8] &r'
   debug: false
+  bonus-damage: 2.0
 
 books:
   starter:
