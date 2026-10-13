@@ -1,1 +1,15 @@
-
+name: DeathbanEnchants
+version: 0.1.0
+main: id.deathban.enchants.DeathbanEnchants
+api-version: '1.21'
+author: Deathban
+softdepend: [Vault, Essentials, AuraSkills]
+commands:
+  denchants:
+    description: Main command for DeathbanEnchants
+    usage: /denchants [help|book <id>]
+    aliases: [de]
+permissions:
+  deathbanenchants.admin:
+    description: Allows administration of DeathbanEnchants
+    default: op
