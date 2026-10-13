@@ -1,4 +1,3 @@
-
 package id.deathban.enchants;
 
 import org.bukkit.ChatColor;
