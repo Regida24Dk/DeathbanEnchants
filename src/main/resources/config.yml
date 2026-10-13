@@ -1,1 +1,13 @@
+# DeathbanEnchants - initial configuration
+settings:
+  prefix: '&8[&dDeathbanEnchants&8] &r'
+  debug: false
 
+books:
+  starter:
+    name: '&d&lArcane Strike'
+    rarity: 'RARE'
+    level: 1
+    description:
+      - '&7A custom enchantment book.'
+      - '&eFoundation test item; combat effect is not implemented yet.'
