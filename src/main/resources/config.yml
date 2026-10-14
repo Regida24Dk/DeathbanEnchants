@@ -1,14 +1,16 @@
-# DeathbanEnchants - initial configuration
+# ==========================================
+# DeathbanEnchants Configuration
+# ==========================================
+
 settings:
   prefix: '&8[&dDeathbanEnchants&8] &r'
-  debug: false
-  bonus-damage: 2.0
 
-books:
-  starter:
-    name: '&d&lArcane Strike'
-    rarity: 'RARE'
-    level: 1
-    description:
-      - '&7A custom enchantment book.'
-      - '&eFoundation test item; combat effect is not implemented yet.'
+  debug: false
+
+  # Bonus damage Arcane Strike per level
+  # Level I   = 2 damage
+  # Level II  = 4 damage
+  # Level III = 6 damage
+  # Level IV  = 8 damage
+  # Level V   = 10 damage
+  bonus-damage: 2.0
