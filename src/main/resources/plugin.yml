@@ -1,15 +1,17 @@
 name: DeathbanEnchants
-version: 0.1.0
+version: '2.0.0'
 main: id.deathban.enchants.DeathbanEnchants
 api-version: '1.21'
 author: Deathban
-softdepend: [Vault, Essentials, AuraSkills]
+description: Custom enchantment plugin
+
 commands:
   denchants:
-    description: Main command for DeathbanEnchants
-    usage: /denchants [help|book <id>]
-    aliases: [de]
+    description: Mengelola custom enchantment
+    usage: /denchants <help|list|book|apply>
+    permission: deathbanenchants.admin
+
 permissions:
   deathbanenchants.admin:
-    description: Allows administration of DeathbanEnchants
+    description: Menggunakan seluruh command DeathbanEnchants
     default: op
