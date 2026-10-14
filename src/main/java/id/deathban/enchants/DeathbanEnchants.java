@@ -1,5 +1,6 @@
 package id.deathban.enchants;
 
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -10,17 +11,20 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.UUID;
 
 public class DeathbanEnchants extends JavaPlugin implements Listener {
@@ -28,17 +32,23 @@ public class DeathbanEnchants extends JavaPlugin implements Listener {
     private NamespacedKey bookKey;
     private NamespacedKey swordKey;
 
-    private static class Selection {
-        final int slot;
-        final String type;
+    private static final int BOOK_SLOT = 10;
+    private static final int APPLY_SLOT = 13;
+    private static final int SWORD_SLOT = 16;
+    private static final int INFO_SLOT = 4;
+    private static final int CLOSE_SLOT = 22;
 
-        Selection(int slot, String type) {
-            this.slot = slot;
-            this.type = type;
+    private final Map<UUID, Boolean> processing = new HashMap<>();
+
+    private class MenuHolder implements InventoryHolder {
+
+        private Inventory inventory;
+
+        @Override
+        public Inventory getInventory() {
+            return inventory;
         }
     }
-
-    private final Map<UUID, Selection> selections = new HashMap<>();
 
     @Override
     public void onEnable() {
@@ -49,7 +59,7 @@ public class DeathbanEnchants extends JavaPlugin implements Listener {
 
         getServer().getPluginManager().registerEvents(this, this);
 
-        getLogger().info("DeathbanEnchants aktif!");
+        getLogger().info("DeathbanEnchants GUI aktif!");
     }
 
     private String color(String text) {
@@ -65,6 +75,30 @@ public class DeathbanEnchants extends JavaPlugin implements Listener {
         ));
     }
 
+    private ItemStack namedItem(
+            Material material,
+            String name,
+            String... loreLines
+    ) {
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+
+        if (meta != null) {
+            meta.setDisplayName(color(name));
+
+            List<String> lore = new ArrayList<>();
+
+            for (String line : loreLines) {
+                lore.add(color(line));
+            }
+
+            meta.setLore(lore);
+            item.setItemMeta(meta);
+        }
+
+        return item;
+    }
+
     private ItemStack createStarterBook() {
         ItemStack book = new ItemStack(Material.ENCHANTED_BOOK);
         ItemMeta meta = book.getItemMeta();
@@ -73,11 +107,12 @@ public class DeathbanEnchants extends JavaPlugin implements Listener {
             return book;
         }
 
-        meta.setDisplayName(color("&d&lArcane Strike"));
+        meta.setDisplayName(color("&d&lArcane Strike I"));
 
         List<String> lore = new ArrayList<>();
         lore.add(color("&7Buku custom enchantment"));
-        lore.add(color("&eKlik buku dan pedang secara bergantian!"));
+        lore.add(color("&7Menambahkan bonus damage"));
+        lore.add(color("&eMasukkan buku dan pedang ke GUI"));
         lore.add(color("&8ID: starter"));
 
         meta.setLore(lore);
@@ -93,6 +128,24 @@ public class DeathbanEnchants extends JavaPlugin implements Listener {
         return book;
     }
 
+    private boolean isStarterBook(ItemStack item) {
+        if (item == null
+                || item.getType() != Material.ENCHANTED_BOOK
+                || !item.hasItemMeta()) {
+            return false;
+        }
+
+        ItemMeta meta = item.getItemMeta();
+
+        return meta != null
+                && "starter".equals(
+                        meta.getPersistentDataContainer().get(
+                                bookKey,
+                                PersistentDataType.STRING
+                        )
+                );
+    }
+
     private boolean isSword(Material material) {
         return switch (material) {
             case WOODEN_SWORD,
@@ -103,25 +156,6 @@ public class DeathbanEnchants extends JavaPlugin implements Listener {
                  NETHERITE_SWORD -> true;
             default -> false;
         };
-    }
-
-    private boolean isStarterBook(ItemStack item) {
-        if (item == null || item.getType() != Material.ENCHANTED_BOOK) {
-            return false;
-        }
-
-        ItemMeta meta = item.getItemMeta();
-
-        if (meta == null) {
-            return false;
-        }
-
-        String id = meta.getPersistentDataContainer().get(
-                bookKey,
-                PersistentDataType.STRING
-        );
-
-        return "starter".equals(id);
     }
 
     private boolean hasArcaneStrike(ItemStack item) {
@@ -138,139 +172,241 @@ public class DeathbanEnchants extends JavaPlugin implements Listener {
                 );
     }
 
+    private boolean isOurMenu(Inventory inventory) {
+        return inventory != null
+                && inventory.getHolder() instanceof MenuHolder;
+    }
+
+    private void openMenu(Player player) {
+        MenuHolder holder = new MenuHolder();
+
+        Inventory inventory = Bukkit.createInventory(
+                holder,
+                27,
+                color("&8Deathban &dEnchants")
+        );
+
+        holder.inventory = inventory;
+
+        // Latar menu.
+        ItemStack filler = namedItem(
+                Material.GRAY_STAINED_GLASS_PANE,
+                "&7 "
+        );
+
+        for (int i = 0; i < inventory.getSize(); i++) {
+            inventory.setItem(i, filler.clone());
+        }
+
+        // Slot input dikosongkan.
+        inventory.setItem(BOOK_SLOT, null);
+        inventory.setItem(SWORD_SLOT, null);
+
+        inventory.setItem(
+                4,
+                namedItem(
+                        Material.ENCHANTED_BOOK,
+                        "&d&lARCANE STRIKE I",
+                        "&7Tambahan damage pada pedang",
+                        "&7Bonus: &e"
+                                + getConfig().getDouble(
+                                        "settings.bonus-damage",
+                                        2.0
+                                ),
+                        "",
+                        "&eMasukkan buku dan pedang"
+                )
+        );
+
+        inventory.setItem(
+                APPLY_SLOT,
+                namedItem(
+                        Material.ANVIL,
+                        "&a&lPASANG ENCHANT",
+                        "&7Masukkan buku di slot kiri",
+                        "&7dan pedang di slot kanan.",
+                        "",
+                        "&eKlik untuk memasang enchant!"
+                )
+        );
+
+        inventory.setItem(
+                CLOSE_SLOT,
+                namedItem(
+                        Material.BARRIER,
+                        "&c&lTUTUP MENU",
+                        "&7Tutup dan kembalikan item."
+                )
+        );
+
+        player.openInventory(inventory);
+    }
+
+    /*
+     * Menangani klik di dalam GUI.
+     * Item input hanya dapat dimasukkan ke slot yang sesuai.
+     */
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
+        Inventory top = event.getView().getTopInventory();
+
+        if (!isOurMenu(top)) {
+            return;
+        }
+
+        int rawSlot = event.getRawSlot();
+
+        // Cegah pemindahan otomatis dari inventory pemain
+        // ke menu, termasuk shift-click.
+        if (rawSlot < 0 || rawSlot >= top.getSize()) {
+            event.setCancelled(true);
+            return;
+        }
+
+        event.setCancelled(true);
+
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
 
-        // Hanya proses slot inventory milik pemain.
-        if (event.getClickedInventory() != player.getInventory()) {
+        if (processing.getOrDefault(player.getUniqueId(), false)) {
             return;
         }
 
-        // Jangan mengganggu aksi pindah item otomatis.
-        if (event.getClick().isShiftClick()
-                || event.getClick().isKeyboardClick()
-                || event.getClick().isCreativeAction()) {
-            return;
-        }
+        ItemStack cursor = event.getCursor();
+        ItemStack current = top.getItem(rawSlot);
 
-        ItemStack clicked = event.getCurrentItem();
-
-        if (clicked == null || clicked.getType().isAir()) {
-            return;
-        }
-
-        boolean clickedBook = isStarterBook(clicked);
-        boolean clickedSword = isSword(clicked.getType());
-
-        // Item lain tidak diproses.
-        if (!clickedBook && !clickedSword) {
-            return;
-        }
-
-        // Cegah klik biasa memindahkan buku atau pedang
-        // ketika sistem enchant sedang memilih item.
-        event.setCancelled(true);
-
-        int clickedSlot = event.getSlot();
-
-        String clickedType = clickedBook ? "book" : "sword";
-
-        Selection previous = selections.get(player.getUniqueId());
-
-        // Pilihan pertama: bisa buku ATAU pedang.
-        if (previous == null) {
-            if (clickedSword && hasArcaneStrike(clicked)) {
-                message(player, "&cPedang ini sudah memiliki Arcane Strike!");
-                return;
-            }
-
-            selections.put(
-                    player.getUniqueId(),
-                    new Selection(clickedSlot, clickedType)
+        // Tombol informasi.
+        if (rawSlot == INFO_SLOT) {
+            message(
+                    player,
+                    "&dArcane Strike I &7memberikan bonus damage."
             );
-
-            if (clickedBook) {
-                message(player,
-                        "&dBuku dipilih! &eSekarang ketuk pedang.");
-            } else {
-                message(player,
-                        "&dPedang dipilih! &eSekarang ketuk buku enchant.");
-            }
-
             return;
         }
 
-        // Klik item sejenis: ganti pilihan ke item yang baru.
-        if (previous.type.equals(clickedType)) {
-            if (clickedSword && hasArcaneStrike(clicked)) {
-                message(player, "&cPedang ini sudah memiliki Arcane Strike!");
+        // Tombol tutup.
+        if (rawSlot == CLOSE_SLOT) {
+            player.closeInventory();
+            return;
+        }
+
+        // Tombol pasang enchant.
+        if (rawSlot == APPLY_SLOT) {
+            applyEnchant(player, top);
+            return;
+        }
+
+        // Hanya slot buku dan pedang yang dapat menerima item.
+        if (rawSlot != BOOK_SLOT && rawSlot != SWORD_SLOT) {
+            return;
+        }
+
+        // Klik kosong dengan cursor kosong: tidak melakukan apa-apa.
+        if (cursor == null || cursor.getType().isAir()) {
+            if (current == null || current.getType().isAir()) {
                 return;
             }
 
-            selections.put(
-                    player.getUniqueId(),
-                    new Selection(clickedSlot, clickedType)
+            // Ambil item dari slot GUI.
+            player.setItemOnCursor(current.clone());
+            top.setItem(rawSlot, null);
+            return;
+        }
+
+        // Validasi item sesuai slot.
+        boolean valid = rawSlot == BOOK_SLOT
+                ? isStarterBook(cursor)
+                : isSword(cursor.getType());
+
+        if (!valid) {
+            message(
+                    player,
+                    "&cSlot ini hanya menerima "
+                            + (rawSlot == BOOK_SLOT
+                            ? "buku Arcane Strike!"
+                            : "pedang!")
             );
-
-            message(player, clickedBook
-                    ? "&dBuku dipilih! &eSekarang ketuk pedang."
-                    : "&dPedang dipilih! &eSekarang ketuk buku enchant.");
-
             return;
         }
 
-        // Dua item berbeda sudah dipilih.
-        // Tentukan posisi buku dan pedang tanpa bergantung
-        // pada urutan klik pemain.
-        final int bookSlot = previous.type.equals("book")
-                ? previous.slot : clickedSlot;
+        if (rawSlot == SWORD_SLOT && hasArcaneStrike(cursor)) {
+            message(player, "&cPedang ini sudah memiliki Arcane Strike!");
+            return;
+        }
 
-        final int swordSlot = previous.type.equals("sword")
-                ? previous.slot : clickedSlot;
+        // Masukkan item ke slot kosong.
+        if (current == null || current.getType().isAir()) {
+            top.setItem(rawSlot, cursor.clone());
+            player.setItemOnCursor(null);
+            return;
+        }
 
-        selections.remove(player.getUniqueId());
+        // Jika slot sudah berisi item, tukar hanya jika
+        // item lama cocok dengan slot inventory pemain.
+        boolean oldItemValid = rawSlot == BOOK_SLOT
+                ? isStarterBook(current)
+                : isSword(current.getType());
 
-        getServer().getScheduler().runTask(this, () -> {
-            if (!player.isOnline()) {
-                return;
-            }
+        if (!oldItemValid) {
+            return;
+        }
 
-            ItemStack book = player.getInventory().getItem(bookSlot);
-            ItemStack sword = player.getInventory().getItem(swordSlot);
+        top.setItem(rawSlot, cursor.clone());
+        player.setItemOnCursor(current.clone());
+    }
 
-            // Validasi ulang kedua item sebelum memproses.
-            if (!isStarterBook(book)
-                    || sword == null
-                    || !isSword(sword.getType())) {
-                message(player,
-                        "&cGagal! Buku atau pedang sudah berubah.");
-                return;
-            }
+    @EventHandler
+    public void onInventoryDrag(InventoryDragEvent event) {
+        if (isOurMenu(event.getView().getTopInventory())) {
+            // Drag dibatalkan untuk mencegah item masuk ke slot
+            // yang tidak diizinkan. Gunakan klik biasa.
+            event.setCancelled(true);
+        }
+    }
 
-            if (hasArcaneStrike(sword)) {
-                message(player,
-                        "&cPedang ini sudah memiliki Arcane Strike!");
-                return;
-            }
+    private void applyEnchant(Player player, Inventory inventory) {
+        UUID uuid = player.getUniqueId();
 
-            ItemMeta meta = sword.getItemMeta();
+        if (processing.getOrDefault(uuid, false)) {
+            return;
+        }
 
-            if (meta == null) {
-                message(player, "&cPedang tidak dapat diberi enchant!");
-                return;
-            }
+        ItemStack book = inventory.getItem(BOOK_SLOT);
+        ItemStack sword = inventory.getItem(SWORD_SLOT);
 
-            // Pasang identitas enchant pada pedang.
+        if (!isStarterBook(book)) {
+            message(player, "&cMasukkan buku Arcane Strike ke slot buku!");
+            return;
+        }
+
+        if (sword == null || !isSword(sword.getType())) {
+            message(player, "&cMasukkan pedang ke slot senjata!");
+            return;
+        }
+
+        if (hasArcaneStrike(sword)) {
+            message(player, "&cPedang ini sudah memiliki Arcane Strike!");
+            return;
+        }
+
+        ItemMeta meta = sword.getItemMeta();
+
+        if (meta == null) {
+            message(player, "&cPedang tidak dapat diberi enchant!");
+            return;
+        }
+
+        processing.put(uuid, true);
+
+        try {
+            // Tambahkan identitas enchant ke pedang.
             meta.getPersistentDataContainer().set(
                     swordKey,
                     PersistentDataType.BYTE,
                     (byte) 1
             );
 
-            // Tambahkan lore tanpa menghapus lore lama.
             List<String> lore = meta.hasLore()
                     ? new ArrayList<>(meta.getLore())
                     : new ArrayList<>();
@@ -280,31 +416,78 @@ public class DeathbanEnchants extends JavaPlugin implements Listener {
             meta.setLore(lore);
             sword.setItemMeta(meta);
 
-            player.getInventory().setItem(swordSlot, sword);
+            // Simpan pedang yang telah diberi enchant.
+            inventory.setItem(SWORD_SLOT, sword);
 
-            // Kurangi tepat satu buku setelah berhasil.
+            // Konsumsi satu buku setelah enchant berhasil.
             if (book.getAmount() > 1) {
-                book.setAmount(book.getAmount() - 1);
-                player.getInventory().setItem(bookSlot, book);
+                ItemStack remaining = book.clone();
+                remaining.setAmount(book.getAmount() - 1);
+                inventory.setItem(BOOK_SLOT, remaining);
             } else {
-                player.getInventory().setItem(bookSlot, null);
+                inventory.setItem(BOOK_SLOT, null);
             }
 
             player.updateInventory();
 
-            message(player,
-                    "&aBerhasil! &dArcane Strike I &atelah terpasang!");
-        });
+            message(
+                    player,
+                    "&aBerhasil! &dArcane Strike I &atelah terpasang!"
+            );
+
+        } finally {
+            processing.remove(uuid);
+        }
     }
 
+    /*
+     * Saat GUI ditutup, kembalikan item input.
+     * Jika inventory penuh, item sisanya dijatuhkan
+     * di lokasi pemain agar tidak hilang.
+     */
     @EventHandler
     public void onInventoryClose(InventoryCloseEvent event) {
-        selections.remove(event.getPlayer().getUniqueId());
+        Inventory inventory = event.getInventory();
+
+        if (!isOurMenu(inventory)) {
+            return;
+        }
+
+        if (!(event.getPlayer() instanceof Player player)) {
+            return;
+        }
+
+        returnItem(player, inventory, BOOK_SLOT);
+        returnItem(player, inventory, SWORD_SLOT);
+    }
+
+    private void returnItem(
+            Player player,
+            Inventory inventory,
+            int slot
+    ) {
+        ItemStack item = inventory.getItem(slot);
+
+        if (item == null || item.getType().isAir()) {
+            return;
+        }
+
+        inventory.setItem(slot, null);
+
+        Map<Integer, ItemStack> leftovers =
+                player.getInventory().addItem(item.clone());
+
+        for (ItemStack leftover : leftovers.values()) {
+            player.getWorld().dropItemNaturally(
+                    player.getLocation(),
+                    leftover
+            );
+        }
     }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
-        selections.remove(event.getPlayer().getUniqueId());
+        processing.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler
@@ -349,10 +532,13 @@ public class DeathbanEnchants extends JavaPlugin implements Listener {
         }
 
         if (args.length == 0 || args[0].equalsIgnoreCase("help")) {
-            message(
-                    player,
-                    "&e/denchants book starter &7- Dapat buku Arcane Strike"
-            );
+            message(player, "&e/denchants menu &7- Buka menu enchant");
+            message(player, "&e/denchants book starter &7- Dapat buku enchant");
+            return true;
+        }
+
+        if (args[0].equalsIgnoreCase("menu")) {
+            openMenu(player);
             return true;
         }
 
@@ -360,15 +546,15 @@ public class DeathbanEnchants extends JavaPlugin implements Listener {
                 && args.length >= 2
                 && args[1].equalsIgnoreCase("starter")) {
 
-            Map<Integer, ItemStack> leftover =
+            Map<Integer, ItemStack> leftovers =
                     player.getInventory().addItem(createStarterBook());
 
-            leftover.values().forEach(item ->
-                    player.getWorld().dropItemNaturally(
-                            player.getLocation(),
-                            item
-                    )
-            );
+            for (ItemStack leftover : leftovers.values()) {
+                player.getWorld().dropItemNaturally(
+                        player.getLocation(),
+                        leftover
+                );
+            }
 
             message(player, "&aBuku Arcane Strike diberikan!");
             return true;
@@ -377,4 +563,4 @@ public class DeathbanEnchants extends JavaPlugin implements Listener {
         message(player, "&cPerintah tidak dikenal. Gunakan /denchants help");
         return true;
     }
-            }
+    }
